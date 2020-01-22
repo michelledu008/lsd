@@ -7,4 +7,8 @@ setup(
     url='https://github.com/michelledu008/unet.git',
     packages=[
         'unet'
-        ])
+        ],
+    install_require=[
+        "numpy"
+    ]
+    )
