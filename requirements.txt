@@ -1,0 +1,5 @@
+numpy
+torch
+-e git+https://github.com/funkey/gunpowder.git@v1.1-dev#egg=gunpowder
+-e git+https://github.com/funkelab/funlib.learn.torch.git@unet#egg=funlib.learn.torch
+
