@@ -1,6 +1,6 @@
 import funlib.learn.torch as ft
 import gunpowder as gp
-from gunpowder.torch import Train
+import gunpowder.torch.Train
 import numpy as np
 import torch
 from radam import RAdam
