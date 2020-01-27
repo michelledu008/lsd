@@ -17,7 +17,7 @@ class BaselineUNet(torch.nn.Module):
         unet = ft.models.UNet(
             in_channels=1,
             num_fmaps=12,
-            fmap_inc_factor=5,
+            fmap_inc_factors=5,
             kernel_size_down=[
                 [(3, 3), (3, 3)],
                 [(3, 3), (3, 3)],
