@@ -17,7 +17,7 @@ class BaselineUNet(torch.nn.Module):
         unet = ft.models.UNet(
             in_channels=1,
             num_fmaps=12,
-            fmap_inc_factors=5,
+            fmap_inc_factor=5,
             kernel_size_down=[
                 [(3, 3), (3, 3)],
                 [(3, 3), (3, 3)],
@@ -162,10 +162,10 @@ if __name__ == "__main__":
 
     pipeline = (
         gp.ZarrSource(
-            '../../01_data/ctc/train_Fluo-N2DH-SIM+.zarr',
+            '/groups/funke/home/dum/ImJoyWorkspace/default/unet_sample/Fluo-N2DH-SIM+.zarr/',
             {
-                raw: 't01/raw',
-                labels: 't01/gt'
+                raw: 'train/raw/',
+                labels: 'train/gt/'
             }) +
         # raw: (d=1, h, w)
         # labels: (d=1, h, w)
@@ -222,6 +222,7 @@ if __name__ == "__main__":
     request = gp.BatchRequest()
     request.add(raw, input_size)
     request.add(affs, output_size)
+
     request.add(affs_predicted, output_size)
 
     print("Starting training...")
