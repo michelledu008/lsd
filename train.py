@@ -4,6 +4,7 @@ from gunpowder.torch import Train
 import numpy as np
 import torch
 from radam import RAdam
+import zarr
 
 import logging
 logging.basicConfig(level=logging.INFO)
@@ -121,13 +122,14 @@ class AddChannelDim(gp.BatchFilter):
 
 class TransposeDims(gp.BatchFilter):
 
-    def __init__(self, permutation):
+    def __init__(self, array, permutation):
         self.permutation = permutation
+        self.array = array
 
     def process(self, batch, request):
 
-        for key, array in batch.arrays.items():
-            array.data = array.data.transpose(self.permutation)
+        print(str(batch[self.array].data.shape) + " " + str(self.permutation))
+        batch[self.array].data = batch[self.array].data.transpose(self.permutation)
 
 
 class RemoveChannelDim(gp.BatchFilter):
@@ -142,82 +144,128 @@ class RemoveChannelDim(gp.BatchFilter):
 
         batch[self.array].data = batch[self.array].data[0]
 
+def build_pipeline(source_dir,
+        target_dir,
+        data_dir,  
+        model, 
+        save_every,
+        batch_size, 
+        input_size, 
+        output_size,
+        raw, 
+        labels,
+        affs,
+        affs_predicted,
+        lr=1e-5): 
+
+    dataset_shape = zarr.open(str(data_dir))['train/{}'.format(source_dir)].shape
+    num_samples = dataset_shape[0]
+    sample_size = dataset_shape[1:]
+
+    loss = torch.nn.MSELoss()
+    optimizer = RAdam(model.parameters(), lr=lr)
+    
+    pipeline = (
+            gp.ZarrSource(
+                data_dir,
+                {
+                    raw: 'train/{}'.format(source_dir),
+                    labels: 'train/{}'.format(target_dir)
+                },
+                array_specs={
+                    raw: gp.ArraySpec(
+                        roi=gp.Roi((0, 0, 0), (num_samples,) + sample_size),
+                        voxel_size=(1, 1, 1)),
+                    labels: gp.ArraySpec(
+                        roi=gp.Roi((0, 0, 0), (num_samples,) + sample_size),
+                        voxel_size=(1, 1, 1))
+                }) +
+            # raw: (d=1, h, w)
+            # labels: (d=1, fmap_inc_factors=5h, w)
+            gp.RandomLocation() +
+            # raw: (d=1, h, w)
+            # labels: (d=1, h, w)
+            gp.AddAffinities(
+                affinity_neighborhood=[(0, 1, 0), (0, 0, 1)],
+                labels=labels,
+                affinities=affs) +
+            gp.Normalize(affs, factor=1.0) +
+            # raw: (d=1, h, w)
+            # affs: (c=2, d=1, h, w)
+            Squash(dim=-3) +
+            # get rid of z dim
+            # raw: (h, w)
+            # affs: (c=2, h, w)
+            AddChannelDim(raw) +
+            # raw: (c=1, h, w)
+            # affs: (c=2, h, w)
+            gp.PreCache() +
+            gp.Stack(batch_size) +
+            # raw: (b=10, c=1, h, w)
+            # affs: (b=10, c=2, h, w)
+            Train(
+                model=model,
+                loss=loss,
+                optimizer=optimizer,
+                inputs={'x': raw},
+                target=affs,
+                output=affs_predicted,
+                save_every=save_every,
+                log_dir='log') +
+            # raw: (b=10, c=1, h, w)
+            # affs: (b=10, c=2, h, w)
+            # affs_predicted: (b=10, c=2, h, w)
+            TransposeDims(raw,(1, 0, 2, 3)) +
+            TransposeDims(affs,(1, 0, 2, 3)) +
+            TransposeDims(affs_predicted,(1, 0, 2, 3)) +
+            # raw: (c=1, b=10, h, w)
+            # affs: (c=2, b=10, h, w)
+            # affs_predicted: (c=2, b=10, h, w)
+            RemoveChannelDim(raw) +
+            # raw: (b=10, h, w)
+            # affs: (c=2, b=10, h, w)
+            # affs_predicted: (c=2, b=10, h, w)
+            gp.Snapshot(
+                dataset_names={
+                    raw: 'raw',
+                    labels: 'labels',
+                    affs: 'affs',
+                    affs_predicted: 'affs_predicted'
+                },
+                every=100) +
+            gp.PrintProfilingStats(every=100)
+        )
+    return pipeline 
 
 if __name__ == "__main__":
 
     model = BaselineUNet()
     print(model)
-    loss = torch.nn.MSELoss()
-    optimizer = RAdam(model.parameters(), lr=1e-5)
 
     raw = gp.ArrayKey('RAW')
     labels = gp.ArrayKey('LABELS')
     affs = gp.ArrayKey('AFFS')
     affs_predicted = gp.ArrayKey('AFFS_PREDICTED')
 
+
     input_size = (100, 100)
     output_size = (8, 8)
-
     batch_size = 10
-
-    pipeline = (
-        gp.ZarrSource(
-            '/groups/funke/home/dum/ImJoyWorkspace/default/unet_sample/Fluo-N2DH-SIM+.zarr/',
-            {
-                raw: 'train/raw/',
-                labels: 'train/gt/'
-            }) +
-        # raw: (d=1, h, w)
-        # labels: (d=1, h, w)
-        gp.RandomLocation() +
-        # raw: (d=1, h, w)
-        # labels: (d=1, h, w)
-        gp.AddAffinities(
-            affinity_neighborhood=[(0, 1, 0), (0, 0, 1)],
-            labels=labels,
-            affinities=affs) +
-        gp.Normalize(affs, factor=1.0) +
-        # raw: (d=1, h, w)
-        # affs: (c=2, d=1, h, w)
-        Squash(dim=-3) +
-        # get rid of z dim
-        # raw: (h, w)
-        # affs: (c=2, h, w)
-        AddChannelDim(raw) +
-        # raw: (c=1, h, w)
-        # affs: (c=2, h, w)
-        gp.PreCache() +
-        gp.Stack(batch_size) +
-        # raw: (b=10, c=1, h, w)
-        # affs: (b=10, c=2, h, w)
-        Train(
-            model=model,
-            loss=loss,
-            optimizer=optimizer,
-            inputs={'x': raw},
-            target=affs,
-            output=affs_predicted) +
-        # raw: (b=10, c=1, h, w)
-        # affs: (b=10, c=2, h, w)
-        # affs_predicted: (b=10, c=2, h, w)
-        TransposeDims((1, 0, 2, 3)) +
-        # raw: (c=1, b=10, h, w)
-        # affs: (c=2, b=10, h, w)
-        # affs_predicted: (c=2, b=10, h, w)
-        RemoveChannelDim(raw) +
-        # raw: (b=10, h, w)
-        # affs: (c=2, b=10, h, w)
-        # affs_predicted: (c=2, b=10, h, w)
-        gp.Snapshot(
-            dataset_names={
-                raw: 'raw',
-                labels: 'labels',
-                affs: 'affs',
-                affs_predicted: 'affs_predicted'
-            },
-            every=100) +
-        gp.PrintProfilingStats(every=100)
-    )
+    data_dir = "/groups/funke/home/dum/Projects/Fluo-N2DH-SIM+.zarr/"
+    save_every = 100000
+    
+    pipeline = build_pipeline("raw",
+                                "gt",
+                                data_dir, 
+                                model, 
+                                save_every,
+                                batch_size, 
+                                input_size, 
+                                output_size,
+                                raw,
+                                labels, 
+                                affs,
+                                affs_predicted)
 
     request = gp.BatchRequest()
     request.add(raw, input_size)
