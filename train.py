@@ -144,8 +144,7 @@ class RemoveChannelDim(gp.BatchFilter):
 
         batch[self.array].data = batch[self.array].data[0]
 
-def build_pipeline(source_dir,
-        target_dir,
+def build_pipeline(
         data_dir,  
         model, 
         save_every,
@@ -158,7 +157,7 @@ def build_pipeline(source_dir,
         affs_predicted,
         lr=1e-5): 
 
-    dataset_shape = zarr.open(str(data_dir))['train/{}'.format(source_dir)].shape
+    dataset_shape = zarr.open(str(data_dir))['train/raw'].shape
     num_samples = dataset_shape[0]
     sample_size = dataset_shape[1:]
 
@@ -169,8 +168,8 @@ def build_pipeline(source_dir,
             gp.ZarrSource(
                 data_dir,
                 {
-                    raw: 'train/{}'.format(source_dir),
-                    labels: 'train/{}'.format(target_dir)
+                    raw: 'train/raw',
+                    labels: 'train/gt'
                 },
                 array_specs={
                     raw: gp.ArraySpec(
