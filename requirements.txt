@@ -1,5 +1,5 @@
 numpy
 torch
--e git+https://github.com/funkey/gunpowder.git@v1.1-dev#egg=gunpowder
--e git+https://github.com/funkelab/funlib.learn.torch.git@unet#egg=funlib.learn.torch
-
+-e git+https://github.com/TuragaLab/malis.git@572ef0420107eee3c721bdafb58775a8a0fc467a#egg=malis
+-e git+https://github.com/funkey/gunpowder.git@fdadd2dbfd836f45495b9c48ec98687e032e701d#egg=gunpowderzarr
+-e git+https://github.com/funkelab/funlib.learn.torch.git@a38f67eb877097f4cdd1c2a1bf814e36a5ce3e22#egg=funlib.learn.torch 
